@@ -1,23 +1,22 @@
 // ============================================================
-// マイドキュメント保管庫 アプリケーションロジック (第1段階)
+// マイドキュメント保管庫 アプリケーションロジック (v2)
+// drive フルアクセススコープ対応 + エラー診断強化版
 // ============================================================
 
 // ----- グローバル状態 -----
-let currentTab = "pdf";              // 現在選択中のタブID
-let firebaseUser = null;             // Firebase認証ユーザー
-let googleAccessToken = null;        // Google Drive APIアクセストークン
-let tokenClient = null;              // Google OAuth トークンクライアント
-let cellsData = [];                  // 現在のタブのセルデータ
+let currentTab = "pdf";
+let firebaseUser = null;
+let googleAccessToken = null;
+let tokenClient = null;
+let cellsData = [];
 
 // ----- DOM 要素 -----
 const $ = (id) => document.getElementById(id);
 
 // ----- 起動 -----
 window.addEventListener("DOMContentLoaded", () => {
-  // Firebase 初期化
   firebase.initializeApp(firebaseConfig);
   
-  // 認証状態の監視
   firebase.auth().onAuthStateChanged((user) => {
     if (user) {
       firebaseUser = user;
@@ -28,20 +27,12 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ログインボタン
   $("login-btn").addEventListener("click", handleLogin);
-
-  // ログアウトボタン
   $("logout-btn").addEventListener("click", handleLogout);
-
-  // ファイル追加ボタン
   $("add-file-btn").addEventListener("click", () => $("file-input").click());
   $("file-input").addEventListener("change", handleFileSelect);
-
-  // 更新ボタン
   $("refresh-btn").addEventListener("click", () => loadCells());
 
-  // タブ生成
   renderTabs();
 });
 
@@ -52,11 +43,10 @@ async function handleLogin() {
   setLoginStatus("ログイン中...");
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
-    provider.addScope("https://www.googleapis.com/auth/drive.file");
+    provider.addScope(GOOGLE_SCOPES);
     await firebase.auth().signInWithPopup(provider);
-    // onAuthStateChangedで自動的にメイン画面へ
   } catch (e) {
-    console.error(e);
+    console.error("[Login] エラー:", e);
     setLoginStatus("ログインに失敗しました: " + (e.message || e));
   }
 }
@@ -84,10 +74,7 @@ function showMainScreen() {
   $("main-screen").style.display = "flex";
   $("user-email").textContent = firebaseUser.email || "";
 
-  // Google Identity Services のトークンクライアントを初期化
   initGoogleTokenClient();
-
-  // Google Drive APIへのアクセストークンを取得
   requestDriveToken();
 }
 
@@ -100,10 +87,12 @@ function initGoogleTokenClient() {
     client_id: GOOGLE_CLIENT_ID,
     scope: GOOGLE_SCOPES,
     callback: (tokenResponse) => {
+      console.log("[OAuth] トークンレスポンス:", tokenResponse);
       if (tokenResponse && tokenResponse.access_token) {
         googleAccessToken = tokenResponse.access_token;
-        // 初回トークン取得後にセル読み込み
         loadCells();
+      } else if (tokenResponse.error) {
+        showToast("Drive認証に失敗: " + tokenResponse.error, "error");
       }
     },
   });
@@ -114,7 +103,6 @@ function requestDriveToken() {
     setTimeout(requestDriveToken, 500);
     return;
   }
-  // ユーザーにアクセス許可を求める（ヒントを渡してUIを最小化）
   tokenClient.requestAccessToken({ hint: firebaseUser.email });
 }
 
@@ -144,7 +132,7 @@ function getCurrentTabDef() {
 }
 
 // ============================================================
-// セルの読み込み (Firestore + Drive)
+// セルの読み込み
 // ============================================================
 async function loadCells() {
   if (!googleAccessToken) {
@@ -157,21 +145,28 @@ async function loadCells() {
 
   try {
     const tabDef = getCurrentTabDef();
+    console.log(`[loadCells] タブ: ${tabDef.id}, フォルダID: ${tabDef.folderId}`);
 
-    // 1. Firestoreから現タブのメタデータを取得
+    if (!tabDef.folderId || tabDef.folderId.includes("【")) {
+      throw new Error(`フォルダIDが設定されていません (タブ: ${tabDef.name})`);
+    }
+
     const fsCells = await loadFirestoreCells(tabDef.id);
+    console.log(`[loadCells] Firestore取得: ${fsCells.length}件`);
 
-    // 2. Driveから現タブフォルダ内のファイル一覧を取得
     const driveFiles = await loadDriveFiles(tabDef.folderId);
+    console.log(`[loadCells] Drive取得: ${driveFiles.length}件`);
 
-    // 3. マージ：Firestoreにあるものはそのまま、Driveだけにあるものは新規作成
     cellsData = await mergeCellsAndFiles(fsCells, driveFiles, tabDef.id);
 
     renderGrid();
     updateFooter();
   } catch (e) {
-    console.error(e);
+    console.error("[loadCells] エラー:", e);
     showToast("読み込みエラー: " + (e.message || e), "error");
+    cellsData = [];
+    renderGrid();
+    updateFooter();
   } finally {
     hideLoading();
   }
@@ -186,38 +181,65 @@ async function loadFirestoreCells(tabId) {
   
   const cells = [];
   snap.forEach((doc) => cells.push({ id: doc.id, ...doc.data() }));
-  // order順でソート
   cells.sort((a, b) => (a.order || 0) - (b.order || 0));
   return cells;
 }
 
 async function loadDriveFiles(folderId) {
-  const url = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,modifiedTime,createdTime)&pageSize=200`;
+  // クエリパラメータをencodeURIComponentで安全に
+  const q = `'${folderId}' in parents and trashed=false`;
+  const url = "https://www.googleapis.com/drive/v3/files"
+    + "?q=" + encodeURIComponent(q)
+    + "&fields=" + encodeURIComponent("files(id,name,mimeType,modifiedTime,createdTime)")
+    + "&pageSize=200"
+    + "&supportsAllDrives=true";
+  
+  console.log("[Drive API] リクエストURL:", url);
+  
   const res = await fetch(url, {
     headers: { Authorization: "Bearer " + googleAccessToken }
   });
+  
   if (!res.ok) {
+    const errorText = await res.text();
+    console.error("[Drive API] エラーレスポンス:", res.status, errorText);
     if (res.status === 401) {
-      // トークン期限切れ → 再取得
+      googleAccessToken = null;
       requestDriveToken();
       throw new Error("認証期限切れ。再ログインしてください。");
     }
-    throw new Error("Drive APIエラー: " + res.status);
+    if (res.status === 404) {
+      throw new Error(`フォルダが見つかりません (ID: ${folderId.substring(0, 10)}...)`);
+    }
+    throw new Error(`Drive APIエラー: ${res.status}`);
   }
+  
   const data = await res.json();
   return data.files || [];
 }
 
 async function mergeCellsAndFiles(fsCells, driveFiles, tabId) {
-  // FirestoreにあるDriveファイルIDのセット
   const fsFileIds = new Set(fsCells.map((c) => c.driveFileId).filter(Boolean));
-  // DriveにあるファイルIDのセット
   const driveFileIds = new Set(driveFiles.map((f) => f.id));
 
-  // 1. Firestoreにあって、Driveにもまだあるセル → そのまま残す
+  // Firestoreにあって、Driveにもまだあるセル
   let merged = fsCells.filter((c) => driveFileIds.has(c.driveFileId));
 
-  // 2. Firestoreになくて、Driveにだけあるファイル → 新規セル作成
+  // Drive側のファイル情報でセル情報を更新（タイトル変更等の反映）
+  merged = merged.map((cell) => {
+    const driveFile = driveFiles.find((f) => f.id === cell.driveFileId);
+    if (driveFile) {
+      return {
+        ...cell,
+        title: driveFile.name,  // Drive側の最新名を反映
+        mimeType: driveFile.mimeType,
+        driveModifiedTime: driveFile.modifiedTime
+      };
+    }
+    return cell;
+  });
+
+  // Firestoreにない新規ファイル
   const newDriveFiles = driveFiles.filter((f) => !fsFileIds.has(f.id));
   for (const f of newDriveFiles) {
     const newCell = {
@@ -237,7 +259,19 @@ async function mergeCellsAndFiles(fsCells, driveFiles, tabId) {
     merged.push({ id: docRef.id, ...newCell, registeredAt: new Date() });
   }
 
-  // 3. orderで再ソート
+  // 削除済みセルのFirestoreデータをクリーンアップ
+  const deletedFsCells = fsCells.filter((c) => !driveFileIds.has(c.driveFileId));
+  for (const c of deletedFsCells) {
+    try {
+      await firebase.firestore()
+        .collection("users").doc(firebaseUser.uid)
+        .collection("cells").doc(c.id).delete();
+      console.log("[cleanup] Firestoreから削除:", c.title);
+    } catch (e) {
+      console.warn("[cleanup] 削除失敗:", e);
+    }
+  }
+
   merged.sort((a, b) => (a.order || 0) - (b.order || 0));
   return merged;
 }
@@ -267,7 +301,10 @@ function buildFilledCell(cell, tabDef) {
   el.className = "cell";
   el.title = cell.title;
   
-  const dateStr = formatDate(cell.driveCreatedTime || (cell.registeredAt && cell.registeredAt.toDate ? cell.registeredAt.toDate() : null));
+  const dateStr = formatDate(
+    cell.driveCreatedTime || 
+    (cell.registeredAt && cell.registeredAt.toDate ? cell.registeredAt.toDate() : null)
+  );
 
   el.innerHTML = `
     <div class="cell-content">
@@ -280,13 +317,11 @@ function buildFilledCell(cell, tabDef) {
     </div>
   `;
 
-  // クリック → Driveプレビュー画面を別タブで開く
   el.addEventListener("click", (e) => {
     if (e.target.closest(".cell-action-btn")) return;
     openInDrive(cell);
   });
 
-  // 削除ボタン
   el.querySelector(".cell-action-btn.delete").addEventListener("click", (e) => {
     e.stopPropagation();
     deleteCell(cell);
@@ -305,7 +340,6 @@ function buildEmptyCell() {
 // セル操作
 // ============================================================
 function openInDrive(cell) {
-  // Driveのプレビューページを別タブで開く
   const url = `https://drive.google.com/file/d/${cell.driveFileId}/view`;
   window.open(url, "_blank");
 }
@@ -315,7 +349,6 @@ async function deleteCell(cell) {
 
   showLoading("削除中...");
   try {
-    // 1. Driveからファイルを削除
     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${cell.driveFileId}`, {
       method: "DELETE",
       headers: { Authorization: "Bearer " + googleAccessToken }
@@ -324,7 +357,6 @@ async function deleteCell(cell) {
       throw new Error("Driveからの削除に失敗: " + res.status);
     }
 
-    // 2. Firestoreからメタデータを削除
     await firebase.firestore()
       .collection("users").doc(firebaseUser.uid)
       .collection("cells").doc(cell.id).delete();
@@ -332,7 +364,7 @@ async function deleteCell(cell) {
     showToast("削除しました", "success");
     await loadCells();
   } catch (e) {
-    console.error(e);
+    console.error("[delete] エラー:", e);
     showToast("削除に失敗しました: " + (e.message || e), "error");
   } finally {
     hideLoading();
@@ -345,16 +377,16 @@ async function deleteCell(cell) {
 async function handleFileSelect(e) {
   const file = e.target.files[0];
   if (!file) return;
-  e.target.value = ""; // 同じファイルでも再選択できるように
+  e.target.value = "";
   
   showLoading(`「${file.name}」をアップロード中...`);
   try {
     const tabDef = getCurrentTabDef();
-    const driveFile = await uploadToDrive(file, tabDef.folderId);
+    await uploadToDrive(file, tabDef.folderId);
     showToast("アップロード完了", "success");
     await loadCells();
   } catch (e) {
-    console.error(e);
+    console.error("[upload] エラー:", e);
     showToast("アップロード失敗: " + (e.message || e), "error");
   } finally {
     hideLoading();
@@ -362,7 +394,6 @@ async function handleFileSelect(e) {
 }
 
 async function uploadToDrive(file, folderId) {
-  // Driveへのマルチパートアップロード
   const metadata = {
     name: file.name,
     parents: [folderId]
@@ -401,7 +432,7 @@ function showToast(message, type = "") {
   toast.textContent = message;
   toast.className = "toast" + (type ? " " + type : "");
   toast.style.display = "block";
-  setTimeout(() => { toast.style.display = "none"; }, 3000);
+  setTimeout(() => { toast.style.display = "none"; }, 4000);
 }
 
 function setStatusText(text) {
