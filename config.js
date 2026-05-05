@@ -19,9 +19,9 @@ const GOOGLE_CLIENT_ID = "705838323505-70a7vcqtous7hvpmh23t8arimevkj58j.apps.goo
 const DRIVE_FOLDERS = {
   root: "1rcVTPe5oSl2d2Q-sH6pMOQW8w1TGr1I0",
   pdf: "1aVGu1jafqpT3LjGzjPAfsQPU9_QHkfQc",
-  excel: "1yTGlRfRAhHlZv151PhQfM_qSR0TyMU0y",
+  excel: "1yTGlRfRAhHIZv151PhQfM_qSR0TyMU0y",
   word: "1br795jTA1Ygfg_s1v2zMfJxUEEqNCJ8Y",
-  other: "1YKy727ly_AmPssNBByUgeb2RoT_Fd7nd"
+  other: "1YKy727Iy_AmPssNBByUgeb2RoT_Fd7nd"
 };
 
 // =============================================================
@@ -35,7 +35,6 @@ const TAB_DEFINITIONS = [
   { id: "other", name: "その他", folderId: DRIVE_FOLDERS.other, color: "#5F5E5A", letter: "O" }
 ];
 
-// drive スコープ（フルアクセス）に変更
 const GOOGLE_SCOPES = "https://www.googleapis.com/auth/drive";
 
 const DEFAULT_CELL_COUNT = 100;
