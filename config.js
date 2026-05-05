@@ -1,5 +1,5 @@
 // =============================================================
-// マイドキュメント保管庫 設定ファイル
+// マイドキュメント保管庫 設定ファイル (v2 - drive スコープ対応)
 // =============================================================
 
 // 【1】Firebase 設定情報
@@ -35,6 +35,7 @@ const TAB_DEFINITIONS = [
   { id: "other", name: "その他", folderId: DRIVE_FOLDERS.other, color: "#5F5E5A", letter: "O" }
 ];
 
-const GOOGLE_SCOPES = "https://www.googleapis.com/auth/drive.file";
+// drive スコープ（フルアクセス）に変更
+const GOOGLE_SCOPES = "https://www.googleapis.com/auth/drive";
 
 const DEFAULT_CELL_COUNT = 100;
