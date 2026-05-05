@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>マイドキュメント保管庫</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ============== ログイン画面 ============== -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-card">
+      <h1>マイドキュメント保管庫</h1>
+      <p class="login-subtitle">PDF・Excel・Word・Googleドキュメントを<br>1か所にまとめて管理</p>
+      <button id="login-btn" class="btn-google">
+        <span class="google-icon">G</span>
+        Googleアカウントでログイン
+      </button>
+      <p class="login-note" id="login-status"></p>
+    </div>
+  </div>
+
+  <!-- ============== メイン画面 ============== -->
+  <div id="main-screen" class="main-screen" style="display: none;">
+
+    <!-- ヘッダー -->
+    <header class="header">
+      <div class="header-title">マイドキュメント保管庫</div>
+      <div class="header-user">
+        <span id="user-email" class="user-email"></span>
+        <button id="logout-btn" class="btn-logout">ログアウト</button>
+      </div>
+    </header>
+
+    <!-- タブ切替 -->
+    <nav class="tabs" id="tabs"></nav>
+
+    <!-- ツールバー -->
+    <div class="toolbar">
+      <button id="add-file-btn" class="btn-primary">+ ファイル追加</button>
+      <button id="add-label-btn" class="btn-secondary">+ ラベル追加</button>
+      <button id="refresh-btn" class="btn-secondary">↻ 更新</button>
+      <span class="status-text" id="status-text"></span>
+    </div>
+
+    <!-- セクション表示エリア -->
+    <main class="grid-container">
+      <div id="sections"></div>
+    </main>
+
+    <!-- フッター -->
+    <footer class="footer">
+      <span id="footer-info">読み込み中...</span>
+    </footer>
+
+  </div>
+
+  <!-- ============== ファイル選択用 ============== -->
+  <input type="file" id="file-input" style="display: none;">
+
+  <!-- ============== ローディング表示 ============== -->
+  <div id="loading" class="loading" style="display: none;">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loading-text">処理中...</div>
+  </div>
+
+  <!-- ============== トースト通知 ============== -->
+  <div id="toast" class="toast" style="display: none;"></div>
+
+  <!-- ============== ラベル編集モーダル ============== -->
+  <div id="label-modal" class="modal" style="display: none;">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2 class="modal-title" id="label-modal-title">ラベル追加</h2>
+      <div class="modal-body">
+        <label class="form-label">ラベル名</label>
+        <input type="text" id="label-name-input" class="form-input" placeholder="例：仕事用、投資用">
+        
+        <label class="form-label">色を選択</label>
+        <div id="color-picker" class="color-picker"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="label-modal-cancel" class="btn-secondary">キャンセル</button>
+        <button id="label-modal-delete" class="btn-danger" style="display:none;">削除</button>
+        <button id="label-modal-save" class="btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== セル操作モーダル（モバイル等用） ============== -->
+  <div id="cell-action-modal" class="modal" style="display: none;">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-content-small">
+      <h2 class="modal-title" id="cell-action-title">操作</h2>
+      <div class="modal-body">
+        <button class="btn-action" id="action-open">📄 別タブで開く</button>
+        <button class="btn-action" id="action-move">🏷 ラベルを変更</button>
+        <button class="btn-action btn-action-danger" id="action-delete">× 削除</button>
+      </div>
+      <div class="modal-footer">
+        <button id="cell-action-cancel" class="btn-secondary" style="width:100%;">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== ラベル選択モーダル ============== -->
+  <div id="label-select-modal" class="modal" style="display: none;">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2 class="modal-title">ラベル選択（複数選択可）</h2>
+      <div class="modal-body">
+        <div id="label-select-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="label-select-cancel" class="btn-secondary">キャンセル</button>
+        <button id="label-select-save" class="btn-primary">適用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== Google API ============== -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js"></script>
+
+  <!-- Firebase v10 (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+
+  <!-- アプリのコード -->
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
